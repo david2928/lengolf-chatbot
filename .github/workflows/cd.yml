@@ -1,0 +1,38 @@
+# .github/workflows/cd.yml
+name: CD
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy to Cloud Run
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+    - name: Build Docker image
+      run: |
+        docker build -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/lengolf-bot:$GITHUB_SHA .
+    
+    - name: Push Docker image
+      run: |
+        docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/lengolf-bot:$GITHUB_SHA
+
+    - name: Deploy to Cloud Run
+      run: |
+        gcloud run deploy lengolf-bot \
+          --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/lengolf-bot:$GITHUB_SHA \
+          --platform managed \
+          --region ${{ secrets.GCP_REGION }} \
+          --allow-unauthenticated \
+          --update-env-vars LINE_CHANNEL_ACCESS_TOKEN=${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }},LINE_CHANNEL_SECRET=${{ secrets.LINE_CHANNEL_SECRET }},GAS_WEB_APP_URL=${{ secrets.GAS_WEB_APP_URL }},OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
