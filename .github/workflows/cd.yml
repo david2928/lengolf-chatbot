@@ -35,23 +35,22 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    # Authenticate to Google Cloud using credentials_json
+    # Authenticate to Google Cloud and configure Docker
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v1
       with:
         credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+        setup_cloudsdk: true
+        setup_docker: true
 
-    # Set up Google Cloud SDK
-    - name: Set up Google Cloud SDK
-      uses: google-github-actions/setup-gcloud@v1
-      with:
-        project_id: ${{ secrets.GCP_PROJECT_ID }}
-
-    # Build the Docker image and push to Google Container Registry (GCR)
-    - name: Build and push Docker image
+    # Build the Docker image
+    - name: Build Docker image
       run: |
         docker build -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/lengolf-bot .
-        echo ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }} | docker login -u _json_key --password-stdin https://gcr.io
+
+    # Push the Docker image to GCR
+    - name: Push Docker image
+      run: |
         docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/lengolf-bot
 
     # Deploy to Cloud Run
@@ -61,4 +60,5 @@ jobs:
           --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/lengolf-bot \
           --region ${{ secrets.GCP_REGION }} \
           --platform managed \
-          --allow-unauthenticated
+          --allow-unauthenticated \
+          --update-env-vars LINE_CHANNEL_ACCESS_TOKEN=${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }},LINE_CHANNEL_SECRET=${{ secrets.LINE_CHANNEL_SECRET }},GAS_WEB_APP_URL=${{ secrets.GAS_WEB_APP_URL }},OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
