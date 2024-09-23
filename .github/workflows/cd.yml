@@ -35,13 +35,22 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    # Authenticate to Google Cloud and configure Docker
+    # Authenticate to Google Cloud
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v1
       with:
         credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
-        setup_cloudsdk: true
-        setup_docker: true
+
+    # Set up Google Cloud SDK
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        export_default_credentials: true
+
+    # Configure Docker to use gcloud as a credential helper
+    - name: Configure Docker authorization
+      uses: google-github-actions/setup-docker@v1
 
     # Build the Docker image
     - name: Build Docker image
