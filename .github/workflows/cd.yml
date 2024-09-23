@@ -39,18 +39,19 @@ jobs:
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v1
       with:
-        credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+        credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}'
 
     # Set up Google Cloud SDK
     - name: Set up Google Cloud SDK
       uses: google-github-actions/setup-gcloud@v1
       with:
-        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        project_id: '${{ secrets.GCP_PROJECT_ID }}'
         export_default_credentials: true
 
     # Configure Docker to use gcloud as a credential helper
-    - name: Configure Docker authorization
-      uses: google-github-actions/setup-docker@v1
+    - name: Configure Docker authentication
+      run: |
+        gcloud auth configure-docker --quiet
 
     # Build the Docker image
     - name: Build Docker image
@@ -67,7 +68,8 @@ jobs:
       run: |
         gcloud run deploy lengolf-bot \
           --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/lengolf-bot \
-          --region ${{ secrets.GCP_REGION }} \
+          --region '${{ secrets.GCP_REGION }}' \
           --platform managed \
           --allow-unauthenticated \
-          --update-env-vars LINE_CHANNEL_ACCESS_TOKEN=${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }},LINE_CHANNEL_SECRET=${{ secrets.LINE_CHANNEL_SECRET }},GAS_WEB_APP_URL=${{ secrets.GAS_WEB_APP_URL }},OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          --quiet \
+          --update-env-vars LINE_CHANNEL_ACCESS_TOKEN='${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}',LINE_CHANNEL_SECRET='${{ secrets.LINE_CHANNEL_SECRET }}',GAS_WEB_APP_URL='${{ secrets.GAS_WEB_APP_URL }}',OPENAI_API_KEY='${{ secrets.OPENAI_API_KEY }}'
