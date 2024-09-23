@@ -5,26 +5,17 @@ from linebot.v3 import WebhookHandler
 from linebot.v3.messaging import MessagingApi, Configuration as LineConfiguration, ApiClient
 from linebot.v3.messaging.models import (
     TextMessage,
-    TemplateMessage,
-    ButtonsTemplate,
-    DatetimePickerAction,
     ReplyMessageRequest,
-    PushMessageRequest,
 )
 from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent,
-    PostbackEvent,
 )
 from linebot.v3.exceptions import InvalidSignatureError
 import requests
 from openai import OpenAI
-from dotenv import load_dotenv
 from datetime import datetime
 from typing import Optional
-
-# Load environment variables from .env file (optional)
-load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -43,9 +34,6 @@ handler = WebhookHandler(channel_secret=LINE_CHANNEL_SECRET)
 
 # Initialize OpenAI API client
 client = OpenAI(api_key=OPENAI_API_KEY)
-
-# Initialize session storage (in-memory; consider persistent storage for scalability)
-user_sessions = {}
 
 # Define the functions for OpenAI function calling
 functions = [
@@ -102,59 +90,6 @@ def call_google_apps_script(command, date: Optional[datetime.date] = None):
     else:
         return {"error": f"Google Apps Script returned status code {response.status_code}"}
 
-# Helper function to prompt user for a date using LINE's date picker
-def prompt_for_date(reply_token, user_id):
-    # Define the date picker template
-    date_picker_template = TemplateMessage(
-        alt_text='Please select a date:',
-        template=ButtonsTemplate(
-            title='Select Date',
-            text='Please choose a date to check availability:',
-            actions=[
-                DatetimePickerAction(
-                    label='Pick a date',
-                    data='action=pick_date',
-                    mode='date'
-                )
-            ]
-        )
-    )
-
-    # Send the date picker using LineBotApi
-    reply_message_request = ReplyMessageRequest(
-        reply_token=reply_token,
-        messages=[date_picker_template]
-    )
-    line_bot_api.reply_message(reply_message_request)
-
-    # Update the session to await date input
-    user_sessions[user_id] = {'awaiting': 'date_input'}
-
-# Helper function to handle date input from the date picker
-def handle_date_input(user_id, date_str, reply_token):
-    try:
-        date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        # Now we proceed to handle the date as per the conversation
-        # For simplicity, we'll just call the handle_message function again
-        user_message = f"What is the availability on {date_str}?"
-        # Simulate the message event
-        event = type('Event', (object,), {
-            'message': type('Message', (object,), {'text': user_message}),
-            'reply_token': reply_token,
-            'source': type('Source', (object,), {'user_id': user_id})
-        })
-        handle_message(event)
-    except ValueError:
-        # If the date format is incorrect, prompt again
-        push_message_request = PushMessageRequest(
-            to=user_id,
-            messages=[TextMessage(text="Invalid date format. Please try again.")]
-        )
-        line_bot_api.push_message(push_message_request)
-    finally:
-        # Clear the session after handling
-        user_sessions.pop(user_id, None)
-
 # Webhook callback endpoint
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -166,7 +101,11 @@ def callback():
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
+        print("Invalid signature. Check your LINE_CHANNEL_SECRET.")
         return 'Invalid signature', 400
+    except Exception as e:
+        print(f"Exception in callback: {e}")
+        return 'Internal Server Error', 500
 
     return 'OK'
 
@@ -177,11 +116,6 @@ def handle_message(event):
     reply_token = event.reply_token
     user_id = event.source.user_id
     print(f"User ID: {user_id}, Message: {user_message}")  # Debugging
-
-    # Check if the user is in a session awaiting date input
-    if user_sessions.get(user_id, {}).get('awaiting') == 'date_input':
-        handle_date_input(user_id, user_message, reply_token)
-        return
 
     # Get the current date
     current_date_str = datetime.now().strftime('%Y-%m-%d')
@@ -194,7 +128,8 @@ def handle_message(event):
                 f"You are a helpful assistant that can check golf bay availability and answer other questions. "
                 f"Today's date is {current_date_str}. "
                 "When providing availability information, present it in plain text without any markdown or special formatting characters. "
-                "Please be concise and focus on delivering the necessary information."
+                "Please be concise and focus on delivering the necessary information. "
+                "When asking the user for a date, request it in YYYY-MM-DD format."
             )
         },
         {"role": "user", "content": user_message}
@@ -240,10 +175,20 @@ def handle_message(event):
                     date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
                     response_data = call_google_apps_script('availability_specific', date_obj)
                 except ValueError:
-                    prompt_for_date(reply_token, user_id)
+                    # Send a message asking for a valid date
+                    reply_message_request = ReplyMessageRequest(
+                        reply_token=reply_token,
+                        messages=[TextMessage(text="Please provide a valid date in YYYY-MM-DD format.")]
+                    )
+                    line_bot_api.reply_message(reply_message_request)
                     return
             else:
-                prompt_for_date(reply_token, user_id)
+                # Ask the user to provide a date
+                reply_message_request = ReplyMessageRequest(
+                    reply_token=reply_token,
+                    messages=[TextMessage(text="Please specify the date you want to check availability for (YYYY-MM-DD).")]
+                )
+                line_bot_api.reply_message(reply_message_request)
                 return
         else:
             reply_message_request = ReplyMessageRequest(
@@ -305,23 +250,6 @@ def handle_message(event):
             messages=[TextMessage(text=reply_text)]
         )
         line_bot_api.reply_message(reply_message_request)
-
-# Postback event handler for date picker
-@handler.add(PostbackEvent)
-def handle_postback_event(event):
-    data = event.postback.data
-    params = event.postback.params  # Contains datetimepicker data
-
-    if data == "action=pick_date" and params:
-        date_str = params.get('date')  # Format: 'YYYY-MM-DD'
-        user_id = event.source.user_id
-        reply_token = event.reply_token
-
-        if date_str:
-            handle_date_input(user_id, date_str, reply_token)
-        else:
-            # If date is not provided, prompt again
-            prompt_for_date(reply_token, user_id)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
