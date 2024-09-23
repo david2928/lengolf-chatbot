@@ -35,11 +35,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    # Authenticate to Google Cloud
+    # Authenticate to Google Cloud using credentials_json
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v1
       with:
-        credentials_json: ${{ secrets.GCP_SA_KEY }}  # Service account key stored in GitHub Secrets
+        credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
 
     # Set up Google Cloud SDK
     - name: Set up Google Cloud SDK
@@ -52,7 +52,7 @@ jobs:
     - name: Build and push Docker image
       run: |
         docker build -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/lengolf-bot .
-        echo ${{ secrets.GCP_SA_KEY }} | docker login -u _json_key --password-stdin https://gcr.io
+        echo ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }} | docker login -u _json_key --password-stdin https://gcr.io
         docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/lengolf-bot
 
     # Deploy to Cloud Run
